@@ -3,29 +3,54 @@
 
 modifySTRef(Ref, F) ->
     fun () ->
-        [{value, Value1}] = ets:lookup(Ref, value),
-        Value2 = F(Value1),
-        ets:insert(Ref, {value, Value2}),
-        Value2
+        rpc(Ref, {modify, F})
     end.
 
 newSTRef(Value) ->
     fun () ->
-        Ref = ets:new(st_ref, []),
-        ets:insert(Ref, {value, Value}),
-        Ref
+        spawn(fun() -> sTRef(Value) end)
     end.
 
 readSTRef(Ref) ->
     fun () ->
-        [{value, Value}] = ets:lookup(Ref, value),
-        Value
+        rpc(Ref, read)
     end.
 
 runST(Eff) -> Eff.
 
 writeSTRef(Ref, Value) ->
     fun () ->
-        ets:insert(Ref, {value, Value}),
-        Value
+        rpc(Ref, {write, Value})
+    end.
+
+%% ST Implementation
+
+sTRef(Value) ->
+    receive
+        {From, {modify, F}} ->
+            NewValue = F(Value),
+            respond(From, NewValue),
+            sTRef(NewValue);
+
+        {From, read} ->
+            respond(From, Value),
+            sTRef(Value);
+
+        {From, {write, NewValue}} ->
+            respond(From, NewValue),
+            sTRef(NewValue);
+
+        Any ->
+            io:format("[sTRef] Received: ~p~n", [Any]),
+            sTRef(Value)
+    end.
+
+respond(Pid, Response) ->
+    Pid ! {self(), Response}.
+
+rpc(Pid, Request) ->
+    Pid ! {self(), Request},
+    receive
+        {Pid, Response} ->
+            Response
     end.
