@@ -38,11 +38,7 @@ sTRef(Value) ->
 
         {From, {write, NewValue}} ->
             respond(From, NewValue),
-            sTRef(NewValue);
-
-        Any ->
-            io:format("[sTRef] Received: ~p~n", [Any]),
-            sTRef(Value)
+            sTRef(NewValue)
     end.
 
 respond(Pid, Response) ->
