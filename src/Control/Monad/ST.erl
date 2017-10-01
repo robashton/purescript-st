@@ -1,52 +1,47 @@
 -module(control_monad_sT@foreign).
+-behavior(gen_server).
 -export([modifySTRef/2, newSTRef/1, readSTRef/1, runST/1, writeSTRef/2]).
+-export([code_change/3, handle_call/3, handle_cast/2, handle_info/2, init/1, terminate/2]).
 
 modifySTRef(Ref, F) ->
     fun () ->
-        rpc(Ref, {modify, F})
+        gen_server:call(Ref, {modify, F})
     end.
 
 newSTRef(Value) ->
     fun () ->
-        spawn(fun() -> sTRef(Value) end)
+        {ok, Pid} = gen_server:start(?MODULE, [Value], []),
+        Pid
     end.
 
 readSTRef(Ref) ->
     fun () ->
-        rpc(Ref, read)
+        gen_server:call(Ref, read)
     end.
 
 runST(Eff) -> Eff.
 
 writeSTRef(Ref, Value) ->
     fun () ->
-        rpc(Ref, {write, Value})
+        gen_server:call(Ref, {write, Value})
     end.
 
-%% ST Implementation
+%% gen_server callbacks
 
-sTRef(Value) ->
-    receive
-        {From, {modify, F}} ->
-            NewValue = F(Value),
-            respond(From, NewValue),
-            sTRef(NewValue);
+code_change(_OldVersion, State, _Extra) -> {ok, State}.
 
-        {From, read} ->
-            respond(From, Value),
-            sTRef(Value);
+handle_call({modify, F}, _From, State) ->
+    NewState = F(State),
+    {reply, NewState, NewState};
+handle_call(read, _From, State) ->
+    {reply, State, State};
+handle_call({write, NewState}, _From, _State) ->
+    {reply, NewState, NewState}.
 
-        {From, {write, NewValue}} ->
-            respond(From, NewValue),
-            sTRef(NewValue)
-    end.
+handle_cast(_Request, State) -> {noreply, State}.
 
-respond(Pid, Response) ->
-    Pid ! {self(), Response}.
+handle_info(_Info, State) -> {noreply, State}.
 
-rpc(Pid, Request) ->
-    Pid ! {self(), Request},
-    receive
-        {Pid, Response} ->
-            Response
-    end.
+init(State) -> {ok, State}.
+
+terminate(_Reason, _State) -> ok.
